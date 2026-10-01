@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STARK / Диагностика гения</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #07080b;
+    --panel: #101319;
+    --panel-2: #161a22;
+    --line: #262c38;
+    --red: #b8271f;
+    --red-glow: #ff4a3d;
+    --gold: #c79a3c;
+    --cyan: #58e1f2;
+    --cyan-dim: #2a5a63;
+    --text: #e9e7de;
+    --text-dim: #8b93a1;
+  }
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  h1,h2,h3, .display{
+    font-family: 'Orbitron', sans-serif;
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+
+  ::selection{ background: var(--red); color: #fff; }
+
+  a{ color: inherit; }
+
+  /* ---------- scanline / grid overlay ---------- */
+  .grid-overlay{
+    position: fixed; inset:0;
+    pointer-events:none;
+    background-image:
+      linear-gradient(rgba(88,225,242,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(88,225,242,0.035) 1px, transparent 1px);
+    background-size: 42px 42px;
+    z-index: 1;
+    mask-image: radial-gradient(circle at 50% 20%, black, transparent 75%);
+  }
+
+  /* ---------- boot sequence ---------- */
+  #boot{
+    position: fixed; inset:0; background:#000; z-index: 999;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction: column;
+    font-family:'Space Mono', monospace;
+    color: var(--cyan);
+    transition: opacity .6s ease;
+  }
+  #boot .line{ font-size: 13px; opacity:0; margin: 2px 0; animation: appear .1s forwards; }
+  #boot .bar{ width: 260px; height:2px; background: var(--line); margin-top:16px; overflow:hidden; }
+  #boot .bar span{ display:block; height:100%; width:0%; background: var(--cyan); animation: load 1.8s ease forwards; }
+  @keyframes appear{ to{ opacity: 1; } }
+  @keyframes load{ to{ width: 100%; } }
+  #boot.hide{ opacity:0; pointer-events:none; }
+
+  /* ---------- header / nav ---------- */
+  header{
+    position: fixed; top:0; left:0; right:0; z-index: 50;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 18px 5vw;
+    background: linear-gradient(to bottom, rgba(7,8,11,0.95), rgba(7,8,11,0));
+  }
+  .logo{
+    font-family:'Orbitron', sans-serif; font-weight:900; font-size:18px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .logo .dot{
+    width:10px;height:10px;border-radius:50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan), 0 0 16px var(--cyan);
+    animation: pulse-dot 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse-dot{ 0%,100%{ opacity:1;} 50%{ opacity:.35; } }
+  nav a{
+    text-decoration:none; color: var(--text-dim); font-size:12px;
+    margin-left: 28px; letter-spacing:0.06em;
+    transition: color .2s;
+  }
+  nav a:hover{ color: var(--cyan); }
+  nav{ display:none; }
+  @media(min-width:760px){ nav{ display:block; } }
+
+  section{ position: relative; z-index: 2; padding: 120px 6vw; max-width: 1180px; margin: 0 auto; }
+
+  /* ---------- hero ---------- */
+  #hero{
+    min-height: 100svh; display:flex; align-items:center;
+    padding-top: 90px;
+    position:relative;
+  }
+  .hero-grid{ display:grid; grid-template-columns: 1fr; gap: 60px; align-items:center; width:100%; }
+  @media(min-width:900px){ .hero-grid{ grid-template-columns: 1.1fr 0.9fr; } }
+
+  .eyebrow{ color: var(--cyan); font-size:12px; letter-spacing:0.18em; margin-bottom: 18px; }
+  .eyebrow::before{ content:'// '; color: var(--text-dim); }
+
+  #hero h1{
+    font-size: clamp(46px, 8vw, 96px);
+    line-height: 0.95;
+    font-weight: 900;
+    color: #fff;
+  }
+  #hero h1 span{ color: var(--red); }
+
+  .hero-sub{
+    margin-top: 22px; max-width: 46ch; color: var(--text-dim);
+    font-size: 15px;
+  }
+
+  .cta-row{ margin-top: 38px; display:flex; gap:16px; flex-wrap:wrap; }
+  .btn{
+    font-family:'Space Mono', monospace;
+    border: 1px solid var(--line);
+    background: transparent; color: var(--text);
+    padding: 14px 26px; font-size: 13px; letter-spacing:0.05em;
+    cursor:pointer; position:relative; overflow:hidden;
+    transition: border-color .25s, color .25s;
+  }
+  .btn.primary{ border-color: var(--red); color:#fff; background: rgba(184,39,31,0.12); }
+  .btn.primary:hover{ background: var(--red); box-shadow: 0 0 24px rgba(255,74,61,0.45); }
+  .btn.ghost:hover{ border-color: var(--cyan); color: var(--cyan); }
+
+  /* ---------- arc reactor ---------- */
+  .reactor-wrap{ display:flex; align-items:center; justify-content:center; position:relative; }
+  .reactor{
+    width: min(320px, 68vw); aspect-ratio:1/1; position:relative;
+    cursor: pointer;
+  }
+  .reactor svg{ width:100%; height:100%; display:block; }
+  .reactor-core{ transform-origin: center; animation: spin 14s linear infinite; }
+  .reactor-core.fast{ animation-duration: 2s; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  .reactor-glow{
+    position:absolute; inset:0; border-radius:50%;
+    box-shadow: 0 0 60px 10px rgba(88,225,242,0.35);
+    pointer-events:none;
+    transition: box-shadow .4s ease;
+  }
+  .reactor:active .reactor-glow{ box-shadow: 0 0 100px 30px rgba(88,225,242,0.65); }
+  .reactor-caption{
+    position:absolute; bottom:-34px; left:50%; transform:translateX(-50%);
+    font-size:11px; color: var(--text-dim); white-space:nowrap; letter-spacing:0.08em;
+  }
+
+  /* ---------- section headers ---------- */
+  .sec-head{ margin-bottom: 54px; }
+  .sec-head .eyebrow{ margin-bottom: 10px; }
+  .sec-head h2{ font-size: clamp(28px,4vw,44px); color:#fff; }
+
+  /* ---------- diagnostics / stats ---------- */
+  .diag-grid{ display:grid; grid-template-columns: repeat(2,1fr); gap: 28px; }
+  @media(min-width:760px){ .diag-grid{ grid-template-columns: repeat(4,1fr); } }
+  .diag-card{ border: 1px solid var(--line); padding: 22px; background: var(--panel); }
+  .diag-label{ font-size:11px; color: var(--text-dim); letter-spacing:0.08em; }
+  .diag-num{ font-family:'Orbitron'; font-size: 34px; color: var(--cyan); margin: 10px 0; }
+  .meter{ height:4px; background: var(--line); overflow:hidden; }
+  .meter span{ display:block; height:100%; background: var(--cyan); width:0; transition: width 1.4s ease; }
+  .diag-card:nth-child(2) .meter span{ background: var(--gold); }
+  .diag-card:nth-child(3) .meter span{ background: var(--red-glow); }
+
+  /* ---------- suits timeline ---------- */
+  .timeline{ position:relative; border-left: 1px solid var(--line); padding-left: 34px; }
+  .t-item{ position:relative; padding-bottom: 46px; }
+  .t-item:last-child{ padding-bottom:0; }
+  .t-item::before{
+    content: attr(data-mk);
+    position:absolute; left:-46px; top:0;
+    width:22px;height:22px; border-radius:50%;
+    background: var(--panel); border:1px solid var(--cyan);
+    color: var(--cyan); font-size:9px; font-family:'Orbitron';
+    display:flex; align-items:center; justify-content:center;
+  }
+  .t-item h3{ color:#fff; font-size:19px; }
+  .t-item .t-year{ color: var(--gold); font-size:12px; margin-bottom:6px; display:block; }
+  .t-item p{ color: var(--text-dim); font-size:14px; max-width: 60ch; margin-top:8px; }
+
+  /* ---------- suit cards / gallery ---------- */
+  .suit-grid{ display:grid; grid-template-columns: 1fr; gap:22px; }
+  @media(min-width:760px){ .suit-grid{ grid-template-columns: repeat(3,1fr); } }
+  .suit-card{
+    border:1px solid var(--line); background: var(--panel);
+    padding: 26px; position:relative; overflow:hidden;
+    perspective: 800px;
+  }
+  .suit-face{ transition: transform .5s ease; }
+  .suit-card:hover .suit-face{ transform: rotateY(8deg) translateY(-4px); }
+  .suit-swatch{ width:44px;height:44px;border-radius:8px; margin-bottom:18px; }
+  .suit-card h3{ font-size:17px; color:#fff; margin-bottom:6px; }
+  .suit-tag{ font-size:11px; color: var(--cyan); letter-spacing:0.06em; margin-bottom: 14px; display:block; }
+  .suit-card p{ color: var(--text-dim); font-size:13.5px; }
+  .spec-list{ list-style:none; padding:0; margin: 16px 0 0; font-size:12px; color: var(--text-dim); }
+  .spec-list li{ display:flex; justify-content:space-between; padding: 6px 0; border-top:1px dashed var(--line); }
+
+  /* ---------- jarvis terminal ---------- */
+  .terminal{
+    border: 1px solid var(--cyan-dim); background: #0b1013;
+    box-shadow: 0 0 40px rgba(88,225,242,0.08) inset;
+    padding: 26px; max-width: 640px;
+  }
+  .terminal .t-head{ display:flex; gap:8px; margin-bottom:16px; }
+  .terminal .t-head span{ width:10px;height:10px;border-radius:50%; background: var(--line); }
+  .terminal-out{ min-height: 70px; font-size:13.5px; color: var(--cyan); white-space: pre-wrap; }
+  .terminal-out .prompt{ color: var(--text-dim); }
+  .quick-asks{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+  .quick-asks button{
+    font-family:'Space Mono'; font-size:11.5px; background:transparent;
+    border:1px solid var(--line); color: var(--text-dim); padding:9px 14px; cursor:pointer;
+    transition: all .2s;
+  }
+  .quick-asks button:hover{ border-color: var(--cyan); color: var(--cyan); }
+
+  /* ---------- threat gauge ---------- */
+  .threat-wrap{ display:flex; flex-direction:column; align-items:flex-start; gap:14px; margin-top: 20px; }
+  .threat-bar{ width:100%; max-width:420px; height:10px; background: var(--panel-2); border:1px solid var(--line); position:relative; }
+  .threat-fill{ height:100%; width:22%; background: linear-gradient(90deg, var(--cyan), var(--gold), var(--red-glow)); transition: width .6s ease; }
+  .threat-label{ font-size:12px; color: var(--text-dim); }
+
+  /* ---------- footer ---------- */
+  footer{
+    border-top: 1px solid var(--line);
+    padding: 50px 6vw 40px; text-align:center;
+    color: var(--text-dim); font-size: 12px; position:relative; z-index:2;
+  }
+  footer .quote{ color: var(--text); font-size:16px; font-family:'Orbitron'; margin-bottom:16px; max-width:600px; margin-left:auto; margin-right:auto; }
+
+  .reveal{ opacity:0; transform: translateY(16px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in{ opacity:1; transform: translateY(0); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div class="line" style="animation-delay:.1s">STARK INDUSTRIES OS v42.7</div>
+  <div class="line" style="animation-delay:.3s">инициализация Ж.А.Р.В.И.С...</div>
+  <div class="line" style="animation-delay:.6s">калибровка реактора: ОК</div>
+  <div class="bar"><span></span></div>
+</div>
+
+<div class="grid-overlay"></div>
+
+<header>
+  <div class="logo"><span class="dot"></span> S.I. / STARK</div>
+  <nav>
+    <a href="#diag">Диагностика</a>
+    <a href="#suits">Костюмы</a>
+    <a href="#timeline">Хроника</a>
+    <a href="#jarvis">Джарвис</a>
+  </nav>
+</header>
+
+<section id="hero">
+  <div class="hero-grid">
+    <div>
+      <div class="eyebrow">Досье: Marvel / Земля-616</div>
+      <h1>ТОНИ<br><span>СТАРК</span></h1>
+      <p class="hero-sub">Гений. Миллиардер. Плейбой. Филантроп. Собрал костюм в пещере из подручных деталей — и с тех пор ни разу не делал ничего попроще.</p>
+      <div class="cta-row">
+        <button class="btn primary" onclick="engageReactor()">Запустить реактор</button>
+        <a href="#jarvis" class="btn ghost">Позвать Джарвиса</a>
+      </div>
+    </div>
+    <div class="reactor-wrap">
+      <div class="reactor" id="reactorBtn" onclick="engageReactor()" title="нажми меня">
+        <div class="reactor-glow"></div>
+        <svg viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="96" fill="#0b0e12" stroke="#262c38" stroke-width="2"/>
+          <g class="reactor-core" id="reactorCore">
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#2a5a63" stroke-width="2" stroke-dasharray="4 6"/>
+            <circle cx="100" cy="100" r="52" fill="none" stroke="#58e1f2" stroke-width="3"/>
+            <g stroke="#58e1f2" stroke-width="4">
+              <line x1="100" y1="48" x2="100" y2="66"/>
+              <line x1="100" y1="134" x2="100" y2="152"/>
+              <line x1="48" y1="100" x2="66" y2="100"/>
+              <line x1="134" y1="100" x2="152" y2="100"/>
+              <line x1="65" y1="65" x2="78" y2="78"/>
+              <line x1="122" y1="122" x2="135" y2="135"/>
+              <line x1="65" y1="135" x2="78" y2="122"/>
+              <line x1="122" y1="78" x2="135" y2="65"/>
+            </g>
+          </g>
+          <circle cx="100" cy="100" r="30" fill="#58e1f2" opacity="0.9"/>
+          <circle cx="100" cy="100" r="16" fill="#e9fbff"/>
+        </svg>
+        <div class="reactor-caption" id="reactorCaption">ARC REACTOR · ожидание</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="diag" class="reveal">
+  <div class="sec-head">
+    <div class="eyebrow">Полная диагностика</div>
+    <h2>Показатели гения</h2>
+  </div>
+  <div class="diag-grid">
+    <div class="diag-card">
+      <div class="diag-label">IQ (по легенде)</div>
+      <div class="diag-num">186</div>
+      <div class="meter"><span data-w="97%"></span></div>
+    </div>
+    <div class="diag-card">
+      <div class="diag-label">Костюмов создано</div>
+      <div class="diag-num">85+</div>
+      <div class="meter"><span data-w="80%"></span></div>
+    </div>
+    <div class="diag-card">
+      <div class="diag-label">Раз спас мир</div>
+      <div class="diag-num">7</div>
+      <div class="meter"><span data-w="70%"></span></div>
+    </div>
+    <div class="diag-card">
+      <div class="diag-label">Часов сна за неделю</div>
+      <div class="diag-num">11</div>
+      <div class="meter"><span data-w="18%"></span></div>
+    </div>
+  </div>
+
+  <div class="threat-wrap">
+    <div class="threat-label" id="threatLabel">Текущий уровень угрозы: УМЕРЕННЫЙ</div>
+    <div class="threat-bar"><div class="threat-fill" id="threatFill"></div></div>
+    <button class="btn ghost" onclick="rollThreat()">Пересканировать угрозу</button>
+  </div>
+</section>
+
+<section id="suits" class="reveal">
+  <div class="sec-head">
+    <div class="eyebrow">Гардероб</div>
+    <h2>Избранные костюмы</h2>
+  </div>
+  <div class="suit-grid">
+    <div class="suit-card">
+      <div class="suit-face">
+        <div class="suit-swatch" style="background:#8a1a1a;"></div>
+        <span class="suit-tag">MARK III</span>
+        <h3>Классика в пещере не рождается дважды</h3>
+        <p>Первый по-настоящему рабочий костюм. Красно-золотой, громкий, слегка дырявый по бокам — но именно с него всё началось.</p>
+        <ul class="spec-list">
+          <li><span>Полёт</span><span>да</span></li>
+          <li><span>Репульсоры</span><span>2 шт</span></li>
+          <li><span>Стиль</span><span>нескромный</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="suit-card">
+      <div class="suit-face">
+        <div class="suit-swatch" style="background:#c79a3c;"></div>
+        <span class="suit-tag">MARK XLII</span>
+        <h3>Собирается по частям — буквально</h3>
+        <p>Модульная броня прилетает деталь за деталью прямо на владельца. Эффектно, если ничего не заклинит на середине.</p>
+        <ul class="spec-list">
+          <li><span>Сборка</span><span>дистанционная</span></li>
+          <li><span>Слабое место</span><span>тревожность создателя</span></li>
+          <li><span>Стиль</span><span>инженерный понт</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="suit-card">
+      <div class="suit-face">
+        <div class="suit-swatch" style="background:#58e1f2;"></div>
+        <span class="suit-tag">MARK L</span>
+        <h3>Наношастицы вместо металла</h3>
+        <p>Костюм хранится в устройстве на груди и собирается на лету. Умеет даже щит и крылья — если фантазии хватит.</p>
+        <ul class="spec-list">
+          <li><span>Материал</span><span>нанотех</span></li>
+          <li><span>Формы</span><span>почти любые</span></li>
+          <li><span>Стиль</span><span>минимализм гения</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="timeline" class="reveal">
+  <div class="sec-head">
+    <div class="eyebrow">Хронология</div>
+    <h2>Путь от пещеры до легенды</h2>
+  </div>
+  <div class="timeline">
+    <div class="t-item" data-mk="01">
+      <span class="t-year">Начало</span>
+      <h3>Плен и первая броня</h3>
+      <p>Из ящика с деталями и большого желания жить рождается грубый, но рабочий костюм. Выход из пещеры — сразу с эффектом.</p>
+    </div>
+    <div class="t-item" data-mk="02">
+      <span class="t-year">Публичность</span>
+      <h3>«Я и есть Железный человек»</h3>
+      <p>Вместо того чтобы скрывать личность, как положено супергерою по инструкции, объявляет об этом на камеру. Инструкцию не читал.</p>
+    </div>
+    <div class="t-item" data-mk="03">
+      <span class="t-year">Команда</span>
+      <h3>Сборка союзников</h3>
+      <p>Оказывается, что спасать мир в одиночку — не самая эффективная стратегия. Появляется команда, появляются споры о бюджете на щиты.</p>
+    </div>
+    <div class="t-item" data-mk="04">
+      <span class="t-year">Цена решения</span>
+      <h3>Последний щелчок</h3>
+      <p>Когда все другие варианты исчерпаны, выбирает тот, который спасает остальных. Реактор в груди — теперь не просто источник энергии.</p>
+    </div>
+  </div>
+</section>
+
+<section id="jarvis" class="reveal">
+  <div class="sec-head">
+    <div class="eyebrow">Голосовой интерфейс</div>
+    <h2>Спросите Джарвиса</h2>
+  </div>
+  <div class="terminal">
+    <div class="t-head"><span></span><span></span><span></span></div>
+    <div class="terminal-out" id="jarvisOut"><span class="prompt">&gt;</span> система готова к диалогу. Выберите вопрос ниже.</div>
+    <div class="quick-asks">
+      <button onclick="ask(this)">Который час, Джарвис?</button>
+      <button onclick="ask(this)">Уровень заряда костюма?</button>
+      <button onclick="ask(this)">Оцени мой план</button>
+      <button onclick="ask(this)">Закажи кофе</button>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="quote">«Гений, миллиардер, плейбой, филантроп»</div>
+  Фан-страница про Тони Старка · сделано с уважением к комиксам и фильмам Marvel
+</footer>
+
+<script>
+  // reveal on scroll
+  const revealEls = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); } });
+  }, { threshold: 0.15 });
+  revealEls.forEach(el=>io.observe(el));
+
+  // boot sequence
+  window.addEventListener('load', ()=>{
+    setTimeout(()=>{
+      document.getElementById('boot').classList.add('hide');
+      // fill meters once boot is gone
+      document.querySelectorAll('.meter span').forEach(m=>{
+        m.style.width = m.dataset.w;
+      });
+    }, 1900);
+  });
+
+  // arc reactor interaction
+  let engaged = false;
+  function engageReactor(){
+    const core = document.getElementById('reactorCore');
+    const caption = document.getElementById('reactorCaption');
+    const btn = document.getElementById('reactorBtn');
+    engaged = !engaged;
+    if(engaged){
+      core.classList.add('fast');
+      caption.textContent = 'ARC REACTOR · ПОЛНАЯ МОЩНОСТЬ';
+      btn.style.filter = 'brightness(1.25)';
+    } else {
+      core.classList.remove('fast');
+      caption.textContent = 'ARC REACTOR · ожидание';
+      btn.style.filter = 'none';
+    }
+  }
+
+  // threat gauge
+  const threats = [
+    { label: 'НИЗКИЙ · тихий вторник', w: '12%' },
+    { label: 'УМЕРЕННЫЙ · кто-то что-то взломал', w: '35%' },
+    { label: 'ПОВЫШЕННЫЙ · инопланетный портал вдалеке', w: '58%' },
+    { label: 'ВЫСОКИЙ · нужен весь список Мстителей', w: '80%' },
+    { label: 'КРИТИЧЕСКИЙ · где мой костюм', w: '97%' },
+  ];
+  function rollThreat(){
+    const t = threats[Math.floor(Math.random()*threats.length)];
+    document.getElementById('threatLabel').textContent = 'Текущий уровень угрозы: ' + t.label;
+    document.getElementById('threatFill').style.width = t.w;
+  }
+
+  // jarvis terminal
+  const answers = {
+    'Который час, Джарвис?': 'Сэр, время — то же, что и всегда, когда вы работаете вместо сна. Рекомендую перерыв.',
+    'Уровень заряда костюма?': 'Заряд: 74%. Этого хватит на один эффектный вылет и один драматичный монолог.',
+    'Оцени мой план': 'План содержит 3 гениальных элемента и 1 крайне безрассудный. Как обычно.',
+    'Закажи кофе': 'Уже заказано. Также напоминаю: это ваш пятый за сегодня.'
+  };
+  function ask(btn){
+    const q = btn.textContent;
+    const out = document.getElementById('jarvisOut');
+    out.innerHTML = '<span class="prompt">&gt;</span> ' + q;
+    setTimeout(()=>{
+      out.innerHTML += '<br><span class="prompt">&gt;</span> ' + (answers[q] || 'Обрабатываю запрос...');
+    }, 500);
+  }
+</script>
+
+</body>
+</html>
